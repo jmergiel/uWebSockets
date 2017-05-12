@@ -4,9 +4,15 @@
 	TODO:
 	-some comments
 	-better description
-	-option to control 'auto new-line removal' (bConsumeNL)
+	-make it close when remote host closes
+	-use proper error codes in close
+	-option to control 'auto new-line removal' (bConsumeNL) -> this makes us send zero-sized messages; desirable?
 	-option to force sending text as BINARY
 	-experiment with the uv_tty_t flag
+
+	ISSUES:
+	-crashes when the remote hosts terminates in an unexpected way
+	-also started crashing upon normal disconnect [ctrl+d]
 */
 
 #include <cstdio>
@@ -71,13 +77,15 @@ int main(int argc, const char** argv)
 	uv_tty_t* pTTY = nullptr;
 	auto scopedTTY = make_scoped([pTTY]{ if(pTTY) { uv_tty_reset_mode(); delete pTTY; } });
 
-	h.onMessage([](uWS::WebSocket<uWS::CLIENT> *ws, char* message, size_t length, uWS::OpCode opCode)
+	h.onMessage(
+	[](uWS::WebSocket<uWS::CLIENT> *ws, char* message, size_t length, uWS::OpCode opCode)
 	{
 		message[length] = '\0';	//< apparently there's more in message than just the payload so clip it
 		printf("[%c:%zu]>%s\n", opCode==uWS::BINARY?'B':'T', length, message);
 	});
 
-    h.onConnection([&](uWS::WebSocket<uWS::CLIENT> *ws, uWS::HttpRequest req)
+    h.onConnection(
+	[&](uWS::WebSocket<uWS::CLIENT> *ws, uWS::HttpRequest req)
 	{
 		LOG("Connected to [%s] - use Ctrl+D to disconnect", argv[1]);
 		pTTY = new uv_tty_t;
@@ -87,7 +95,20 @@ int main(int argc, const char** argv)
 		uv_read_start(reinterpret_cast<uv_stream_t*>(pTTY), alloc_buffer, on_read_tty);
     });
 
-	h.onError([&](void *user)
+	h.onDisconnection(
+	[&](uWS::WebSocket<uWS::CLIENT>* ws, int code, char* message, size_t length)
+	{
+		std::string strMsg;
+		if(message && length) strMsg.assign(message, length);
+		LOG("Disconnected (code=%d, msg='%s')", code, strMsg.empty() ? "<nullptr>" : strMsg.c_str());
+		//uv_read_stop(reinterpret_cast<uv_stream_t*>(pTTY));
+		uv_close(reinterpret_cast<uv_handle_t*>(pTTY), nullptr);
+		//h.getDefaultGroup<uWS::CLIENT>().close();
+		//! hmm, it appears we're hanging on read(stdin) even if we uv_close() it
+	});
+
+	h.onError(
+	[&](void *user)
 	{
         LOG("ERROR: Connection to [%s] failed! Timeout?\n", argv[1]);
     });
