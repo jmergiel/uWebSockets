@@ -6,6 +6,7 @@
 	-better description
 	-option to control 'auto new-line removal' (bConsumeNL)
 	-option to force sending text as BINARY
+	-experiment with the uv_tty_t flag
 */
 
 #include <cstdio>
@@ -22,9 +23,9 @@
 
 
 /*
-	It is _SO_ wrong to allocate 64K buffer on the heap EACH TIME we read from stdin,
+	It is _SO_ wrong to allocate a 64K buffer on the heap EACH TIME we read from stdin,
 	but this is the libuv way and I know it much to little to argue. Since this is a
-	user-interactive program I'll let it be - even though I do feel super bad about it
+	user-interactive program I'll let it be - even though I do feel super bad about it.
 */
 void alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
