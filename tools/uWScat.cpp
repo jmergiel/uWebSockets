@@ -9,10 +9,10 @@
 	-option to control 'auto new-line removal' (bConsumeNL) -> this makes us send zero-sized messages; desirable?
 	-option to force sending text as BINARY
 	-experiment with the uv_tty_t flag
+	-add casting helpers
 
 	ISSUES:
 	-crashes when the remote hosts terminates in an unexpected way
-	-also started crashing upon normal disconnect [ctrl+d]
 */
 
 #include <cstdio>
@@ -27,6 +27,14 @@
 #define LOG(FMT, ...) fprintf(stderr, ("uWScat<%s> " FMT "\n"), __PRETTY_FUNCTION__, ##__VA_ARGS__)
 #endif
 
+
+namespace
+{
+	void CloseUV(uv_handle_t* p)
+	{
+		if(!uv_is_closing(p)) uv_close(p, nullptr);
+	}
+}
 
 /*
 	It is _SO_ wrong to allocate a 64K buffer on the heap EACH TIME we read from stdin,
@@ -53,13 +61,13 @@ void on_read_tty(uv_stream_t* pTTY, ssize_t nread, const uv_buf_t* pBuf)
 		{
 			if(pBuf->base[nread-1] == '\n') --nread;
 		}
-		ws->send(pBuf->base, nread, uWS::TEXT);	//< TODO
+		ws->send(pBuf->base, nread, uWS::BINARY);	//< TODO
 	}
 	else if(nread < 0)
 	{
 		if(nread != UV_EOF) LOG("TTY read error [%s], disconnecting...", uv_err_name(nread));
 		else LOG("EOF from TTY, disconnecting and exiting...");
-		uv_close((uv_handle_t*) pTTY, nullptr);
+		CloseUV(reinterpret_cast<uv_handle_t*>(pTTY));
 		ws->close();
 	}
 }
@@ -102,7 +110,7 @@ int main(int argc, const char** argv)
 		if(message && length) strMsg.assign(message, length);
 		LOG("Disconnected (code=%d, msg='%s')", code, strMsg.empty() ? "<nullptr>" : strMsg.c_str());
 		//uv_read_stop(reinterpret_cast<uv_stream_t*>(pTTY));
-		uv_close(reinterpret_cast<uv_handle_t*>(pTTY), nullptr);
+		CloseUV(reinterpret_cast<uv_handle_t*>(pTTY));
 		//h.getDefaultGroup<uWS::CLIENT>().close();
 		//! hmm, it appears we're hanging on read(stdin) even if we uv_close() it
 	});
